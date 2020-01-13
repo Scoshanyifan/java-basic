@@ -4,27 +4,32 @@ import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
 /**
+ * String 常用方法，注意点等
  *
  * @author kunbu
  **/
 public class StringTest {
-	
+
+    public static final String SYSTEM_FILE_ENCODING = System.getProperty("file.encoding");
+
+    public static final String CHARSET_UTF8 = "UTF-8";
+    public static final String CHARSET_GBK = "GBK";
+    public static final String CHARSET_IOS = "ISO-8859-1";
+    public static final String CHARSET_UNICODE = "unicode";
+
 	/**
 	 * getBytes()方法得到系统编码格式下的字节数组，windows7一般是GBK
-	 *
 	 *
 	 **/
 	public static void testGetBytes() {
         try {
-            System.out.println(System.getProperty("file.encoding"));
-            String str = "昆布";
+            String chinese = "昆布";
 
-            byte[] byte2default = str.getBytes();
-            byte[] byte2gbk = new byte[0];
-            byte2gbk = str.getBytes("GBK");
-            byte[] byte2utf8 = str.getBytes("UTF-8");
-            byte[] byte2iso = str.getBytes("ISO-8859-1");
-            byte[] byte2unicode = str.getBytes("unicode");
+            byte[] byte2default = chinese.getBytes();
+            byte[] byte2gbk = chinese.getBytes(CHARSET_GBK);
+            byte[] byte2utf8 = chinese.getBytes(CHARSET_UTF8);
+            byte[] byte2iso = chinese.getBytes(CHARSET_IOS);
+            byte[] byte2unicode = chinese.getBytes(CHARSET_UNICODE);
 
             System.out.println(Arrays.toString(byte2default));
             System.out.println(Arrays.toString(byte2gbk));
@@ -33,17 +38,17 @@ public class StringTest {
             System.out.println(Arrays.toString(byte2unicode));
 
             System.out.println(new String(byte2default));
-            System.out.println(new String(byte2gbk, "GBK"));
-            System.out.println(new String(byte2utf8, "UTF8"));
+            System.out.println(new String(byte2gbk, CHARSET_GBK));
+            System.out.println(new String(byte2utf8, CHARSET_UTF8));
             // 显示??，因为iso编码表中没有汉字
-            System.out.println(new String(byte2iso, "ISO-8859-1"));
-            System.out.println(new String(byte2unicode, "unicode"));
+            System.out.println(new String(byte2iso, CHARSET_IOS));
+            System.out.println(new String(byte2unicode, CHARSET_UNICODE));
 
             // 实际业务中，会遇到苹果浏览器显示文件名乱码（导出excel），因其编码识别iso，所以需要两次转换
-            String iso2utf8 = new String(str.getBytes("utf8"), "ISO-8859-1");
-            System.out.println(iso2utf8);
-            String utf82iso = new String(iso2utf8.getBytes("ISO-8859-1"), "utf8");
+            String utf82iso = new String(chinese.getBytes(CHARSET_UTF8), CHARSET_IOS);
             System.out.println(utf82iso);
+            String iso2utf8 = new String(utf82iso.getBytes(CHARSET_IOS), CHARSET_UTF8);
+            System.out.println(iso2utf8);
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
@@ -88,6 +93,8 @@ public class StringTest {
 	
 
 	public static void main(String[] args) {
+
+	    System.out.println(SYSTEM_FILE_ENCODING);
 
         testGetBytes();
         System.out.println();

@@ -16,7 +16,28 @@ package com.kunbu.java.basic.base.String;
  *
  * @author kunbu
  **/
-public class StringPool {
+public class StringPoolTest {
+
+    public static void testLiteralAndNew() {
+        /**
+         * 字面量形式创建：在编译器
+         *
+         **/
+        String literalStr = "Hello";
+        String newStr = new String("Hello");
+
+        System.out.println(literalStr == newStr);
+    }
+
+    public static String testLiteralAndIntern() {
+        String newStr = "newStr";
+        return newStr;
+    }
+
+    public static String createInternString() {
+        String internStr = "internStr";
+        return internStr;
+    }
 
     public static void main(String[] args) {
 
