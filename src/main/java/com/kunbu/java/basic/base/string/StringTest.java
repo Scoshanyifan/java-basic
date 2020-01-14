@@ -1,10 +1,10 @@
-package com.kunbu.java.basic.base.String;
+package com.kunbu.java.basic.base.string;
 
 import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
 /**
- * String 常用方法，注意点等
+ * string 常用方法，注意点等
  *
  * @author kunbu
  **/
