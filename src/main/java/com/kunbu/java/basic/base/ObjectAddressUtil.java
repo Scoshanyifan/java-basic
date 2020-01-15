@@ -18,9 +18,9 @@ public class ObjectAddressUtil {
      **/
     static final boolean is64bit = true;
 
-    public static void printAddressByJDK(Object obj) {
+    public static void printAddressByJDK(String label, Object obj) {
         //通过jol工具包打印对象的地址
-        System.out.println("Current address: " + VM.current().addressOf(obj));
+        System.out.println(label + " Current address: " + VM.current().addressOf(obj));
         System.out.println(GraphLayout.parseInstance(obj).toPrintable());
     }
 

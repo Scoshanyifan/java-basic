@@ -11,8 +11,7 @@ public class StringB {
 
     public static void getString() {
         String str = "ABC";
-        System.out.println("StringB: ");
-        ObjectAddressUtil.printAddressByJDK(str);
+        ObjectAddressUtil.printAddressByJDK("StringB", str);
     }
 
 }
