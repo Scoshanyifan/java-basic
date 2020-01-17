@@ -4,48 +4,65 @@ import com.kunbu.java.basic.base.ObjectAddressUtil;
 
 /**
  * 字符串（池）被大家经常误解和搞不清楚的原因：
- * JVM为了提高性能和减少内存开销，在实例化字符串常量的时候进行了一些优化，即减少在JVM中创建的字符串的数量，字符串类维护了一个字符串常量池。
+ * JVM为了提高性能和减少内存开销，在实例化字符串常量的时候进行了一些优化，即减少在JVM中创建的字符串的数量，专门维护了一个全局字符串常量池。
  *
- * 分析String相关的创建按编译期到运行期的步骤进行:（因为涉及到运行时数据区域和类加载，所以需参考那两块知识）
+ * 说白了，编译期就能确定的在类加载时统统去了全局字符串池，即全局字符串池存的是已确定的字面量的引用；而编译期不能确定的，会在运行期执行的时候按照每个实例对象进行分配
+ *
+ * PS：全局字符串池JDK6时在Pem区，JDK1.7移到了堆中，从测试结果看，本机的JDK1.8也是在堆中
+ *
+ *
+ *
+ * 三种池子：
+ *  1. Class文件常量池（Class Constant Pool）
+ *      在编译阶段，存放编译器生成的各种字面量(Literal)和符号引用(Symbolic References)
+ *          字面量：文本字符串/final常量值/基本数据类型值
+ *          符号引用：类和接口的全限定名/字段的名称和描述符/方法的名称和描述符
+ *
+ *
+ *  2. 全局驻留字符串常量池（string Pool / string Literal Pool） TODO 池的大小及实现 老版本是1009 老版本fastJson就是因为过度使用intern而造成性能问题
+ *      类加载期间，经过加载，验证/准备阶段之后，在堆中（JDK1.7）的一块区域生成字符串对象实例，然后将该实例的引用值存到全局字符串池中（intern注释中提到的pool）。
+ *
+ *      在HotSpot VM里实现的string pool功能的是一个StringTable类，它是一个哈希表，里面存的是驻留字符串（字面量）的引用，
+ *      也就是说在堆中的某些字符串实例被这个StringTable引用之后就等同被赋予了”驻留字符串”的身份。这个StringTable在每个HotSpot VM的实例只有一份，被所有的类共享。
+ *
+ *    关键点1：pool中存的是引用而不是具体的实例对象，具体的实例对象是在堆中开辟的一块空间（来源不定）。
+ *    关键点2：堆中的字符串对象被赋予”驻留字符串“身份，这在理解testStringLink()第二段代码结果很重要，即驻留字符串的引用是普通实例对象的引用
+ *
+ *
+ *  3. 运行时常量池（Runtime Constant Pool）TODO 具体哪个阶段
+ *      类加载到内存后，JVM会将class常量池中的内容存放到运行时常量池（方法区），由此可知，运行时常量池也是每个类都有一个。
+ *
+ *      运行时常量池存的并不是对象的实例，而是对象的符号引用值。经过解析（resolve）之后，会把符号引用替换为直接引用，TODO https://www.zhihu.com/question/55994121
+ *      解析的过程会去查询全局字符串池，以保证运行时常量池所引用的字符串与全局字符串池中所引用的是一致的。
+ *
+ *      动态性：不只是包括在编译的时候产生的常量，也可以在运行的时候扩展，如动态代理
+ *
+ *    关键点：动态生成的String对象ns调用intern()方法，查找全局字符串池否有相同Unicode的字符串常量，如果有，则返回其的引用，如果没有，则在池中增加该对象的引用值。
+ *           该引用值怎么增加：动态生成的String对象hs位于堆中，然后在全局字符串池中存进这个引用hs，也就是说hs被赋予了驻留字符串身份
+ *
+ *
+ *  小结：全局字符串池只存有引用，具体实例可以来自解析时的字面量，动态生成的String所在的运行时常量
+ *
+ *
+ *
+ * String的不可变性：
+ *  1. final String是保证String不可被继承
+ *  2. 体现在内部char[]是final的，即字符串内容不可变更，初始化时就确定了，并且不提供修改方法，如果调用replace等方法直接返新的String
+ * 	PS：可以利用反射特性破坏String的不可变性      https://segmentfault.com/a/1190000019865846
+ *
+ *
+ * 分析String的创建过程按编译期到运行期的步骤进行:（因为涉及到运行时数据区域和类加载，需参考那两块知识）
  *  1. 编译期：java文件编译成class文件
  *  2/3. 运行期（类加载）：加载 -> 连接（验证/准备/解析）-> 初始化
  *
  *
- * 各种池子：
- *  1. Class文件常量池（Class Constant Pool）
- *      编译阶段：存放编译器生成的各种字面量(Literal)和符号引用(Symbolic References)
- *          字面量：文本字符串/final常量值/基本数据类型值
- *          符号引用：类和接口的全限定名/字段的名称和描述符/方法的名称和描述符
- *
- *  2. 全局驻留字符串池（string Pool / string Literal Pool）
- *      全局字符串池里的内容是在类加载完成，经过验证，准备阶段之后在堆中生成字符串对象实例，然后将该字符串对象实例的引用值存到string pool中（intern注释中提到的pool），
- *      string pool中存的是引用值而不是具体的实例对象，[具体的实例对象是在堆中开辟的一块空间存放的]。
- *      在HotSpot VM里实现的string pool功能的是一个StringTable类，它是一个哈希表，里面存的是驻留字符串(也就是我们常说的用双引号括起来的)的引用（而不是驻留字符串实例本身），
- *      也就是说在堆中的某些字符串实例被这个StringTable引用之后就等同被赋予了”驻留字符串”的身份。这个StringTable在每个HotSpot VM的实例只有一份，被所有的类共享。
- *
- *      java.lang.String@7fbe847cd object externals:
- *           ADDRESS       SIZE TYPE             PATH               VALUE
- *          d61a0610         24 java.lang.String                    (object)            # 全局字符串池中的驻留字符串地址
- *          d61a0628         32 [C               .value             [H, e, l, l, o]     # String中char[]的地址
- *
- *  3. 运行时常量池（Runtime Constant Pool）
- *      类加载-加载阶段：
- *          用于存放程序中的一切常量，包含代码中所定义的各种基本类型（如int,long等等）和对象型（如String及数组）的常量值（final）。
- *      JVM会将class常量池中的内容存放到运行时常量池中，由此可知，运行时常量池也是每个类都有一个。class常量池中存的是字面量和符号引用，
- *      也就是说他们存的并不是对象的实例，而是对象的符号引用值。而经过解析（resolve）之后，也就是把符号引用替换为直接引用，解析的过程会去查询全局字符串池，
- *      也就是我们上面所说的StringTable，以保证运行时常量池所引用的字符串与全局字符串池中所引用的是一致的。
- *
- *      动态性：即运行时常量池在运行期间也可能有新的常量放入池中（如String类的intern（）方法）
- *
- *
- * String的不可变性：
- * 1. final String是保证String不可被继承
- * 2. 体现在内部char[]是final的，即字符串内容不可变更，初始化时就确定了，并且不提供修改方法，如果调用replace等方法直接返新的String
- * 	  PS：可以利用反射特性破坏String的不可变性      https://segmentfault.com/a/1190000019865846
- *
  *
  * 参考：
+ *  R大：https://www.iteye.com/blog/rednaxelafx-774673
+ *  英文文献：https://ibytecode.com/blog/string-literal-pool/
+ *  http://tangxman.github.io/2015/07/23/java-memory-allocation/
  *  http://tangxman.github.io/2015/07/27/the-difference-of-java-string-pool/
+ *
  *  https://blog.csdn.net/qq_26222859/article/details/73135660
  *  https://www.cnblogs.com/xuxinstyle/p/9526210.html
  *  https://www.hollischuang.com/archives/1551
@@ -53,15 +70,15 @@ import com.kunbu.java.basic.base.ObjectAddressUtil;
  *  https://www.hollischuang.com/archives/2517
  *  https://blog.csdn.net/weixin_40999907/article/details/87907083
  *
- *
- * 问题：字面量实例存放在哪，从StringA/StringB的打印地址看，char[]用的是同一个，而运行时常量池是每个类都有，如此的话岂不矛盾？？？
- *
  * @author kunbu
  **/
 public class StringPoolTest {
 
+    /**
+     * 使用诸如String str = “abc”并不能保证一定会创建对象，有可能只是指向一个已经创建好的对象，而通过new()方法是能保证每次会创建一个新对象。
+     *
+     **/
     public static void testLiteralAndNew() {
-
         /**
          * 字面量形式创建：
          *  1. 编译期：hello会被放在Class文件的Constant Pool中（其中还包含符号引用literalStr）
@@ -69,10 +86,10 @@ public class StringPoolTest {
          *      0 ldc #2 <hello>
          *      2 astore_0
          *
-         *  2. 类加载：字面量会在[加载]阶段被加载到类的运行时常量池中（方法区），符号引用会在解析阶段替换为直接引用
+         *  2. 类加载：直接在解析阶段生成一个实例对象放到堆中，然后全局字符串池中存放该实例的引用。
          *
          *
-         * 结论：栈上声明的变量literalStr指向的是全局字符串池中的hello的地址
+         * 结论：栈上声明的变量literalStr指向的是全局字符串池中的hello的引用ls
          *
          **/
         String literalStr = "hello";
@@ -89,16 +106,13 @@ public class StringPoolTest {
          *      12 astore_1
          *      13 return
          *
-         *  2. 类加载：加载阶段，hello从class常量池到了运行时常量池，然后在全局常量池中驻留（即存有引用）
+         *  2. 类加载：在解析阶段，生成一个String实例对象放到堆中，然后字符串池(String pool)中存放该实例的引用ls
          *
-         *  3. 运行期：invokespecial被执行，调用String的初始化方法，在堆中创建对象，该对象指向全局常量池中的引用
-         *
-         *
-         *  结论：newStr指向堆中的地址s1，而s1指向全局字符串池中hello的地址，而newStr2在堆中是另一个地址s2，s2和s1都指向全局字符串池hello的地址
+         *  3. 运行期：invokespecial被执行，调用String的初始化方法，在堆中创建对象hs，该对象指向全局字符串池中的引用ls
          *
          *
-         *  PS：https://www.hollischuang.com/archives/2517 中提到"类加载时，该字符串常量在常量池中已经有了，那这一步就省略了"
-         *      是指在解析阶段
+         *  结论：newStr指向堆中的地址hs，而hs指向全局字符串池中的ls，而newStr2在堆中是另一个地址hs2，hs和hs2都指向全局字符串池中的ls
+         *
          **/
         String newStr = new String("hello");
         String newStr2 = new String("hello");
@@ -113,9 +127,89 @@ public class StringPoolTest {
     }
 
     /**
+     * 1. 全局字符串池中的String引用所指向的char[]在单独区域中
+     * 2. 运行时创建的String对象所指向的char[]在每个类所在的堆内存中
+     *
+     * 从打印的地址看出：
+     *      [1] 创建字面量literal，在类加载-连接期间直接进到全局字符串池，创建驻留String，返回池中引用，char[]也只有一份
+     *      [2] new String("abc“)，字面量abc和[1]一样；new阶段，在堆中创建String对象，指向全局字符串池中的abc，但返回堆中引用
+     *      [3] 编译期无法确定字面量123，只能到运行期的时候在堆中创建String对象，实例数据char[]也不同：0xd6bdf238 / 0xd6bf24e0
+     *      [4] 同一个类下，通过运行期创建字符串，即使123相同，也是分配在不同区域
+     **/
+    public static void testStringAddress() {
+
+        /**
+         * StringA -> "literal" Current address: 3592047080
+         * java.lang.String@7fbe847cd object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d61a49e8         24 java.lang.String                                (object)
+         *          d61a4a00         32 [C               .value                         [l, i, t, e, r, a, l]
+         *
+         *
+         * StringA -> new String("abc") Current address: 3602746608
+         * java.lang.String@36aa7bc2d object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d6bd8cf0         24 java.lang.String                                (object)
+         *          d6bd8d08         24 (something else) (somewhere else)               (something else)
+         *          d6bd8d20         24 [C               .value                         [a, b, c]
+         *
+         *
+         * StringA -> String.valueOf(123) Current address: 3602772560
+         * java.lang.String@182decdbd object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d6bdf238         24 [C               .value                         [1, 2, 3]
+         *          d6bdf250         24 java.lang.String                                (object)
+         **/
+        StringA.String();
+
+        /**
+         * StringB -> "literal" Current address: 3592047080
+         * java.lang.String@7fbe847cd object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d61a49e8         24 java.lang.String                                (object)
+         *          d61a4a00         32 [C               .value                         [l, i, t, e, r, a, l]
+         *
+         *
+         * StringB -> new String("abc") Current address: 3602825256
+         * java.lang.String@4361bd48d object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d6bd8d20         24 [C               .value                         [a, b, c]
+         *          d6bd8d38      78576 (something else) (somewhere else)               (something else)
+         *          d6bec028         24 java.lang.String                                (object)
+         *
+         *
+         * StringB -> String.valueOf(123) Current address: 3602851064
+         * java.lang.String@53bd815bd object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d6bf24e0         24 [C               .value                         [1, 2, 3]
+         *          d6bf24f8         24 java.lang.String                                (object)
+         **/
+        StringB.String();
+
+        /**
+         * C Current address: 3602871600
+         * java.lang.String@7637f22d object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d6bf7518         24 [C               .value                         [1, 2, 3]
+         *          d6bf7530         24 java.lang.String                                (object)
+         *
+         *
+         * D Current address: 3602871648
+         * java.lang.String@762efe5dd object externals:
+         *           ADDRESS       SIZE TYPE             PATH                           VALUE
+         *          d6bf7548         24 [C               .value                         [1, 2, 3]
+         *          d6bf7560         24 java.lang.String                                (object)
+         **/
+        String strC = String.valueOf(123);
+        String strD = String.valueOf(123);
+        ObjectAddressUtil.printAddressByJDK("C", strC);
+        ObjectAddressUtil.printAddressByJDK("D", strD);
+    }
+
+    /**
      * 不同版本JDK下，intern的表现不同
      *
-     * 作用：返回[全局驻留字符串池]中引用，如果池中已存在，则直接返回池中引用，否则在池中"创建"并返回其引用
+     * 作用：返回[全局驻留字符串池]中引用，如果池中已存在，则直接返回池中引用，否则在池中"创建"并返回其引用（为了减少String对象的创建）
      * return a string that has the same contents as this string, but is guaranteed to be from a pool of unique strings.
      *
      * Returns a canonical representation for the string object.
@@ -140,7 +234,8 @@ public class StringPoolTest {
 
         /**
          *        栈                     堆                    全局字符串池
-         *     newStr                   hs                                            char[]={world}
+         *                                                      ls                    char[]={world}
+         *     newStr                    hs                     ls                    char[]={world}
          *     newStrIntern                                     ls                    char[]={world}
          **/
         // 生成1个对象，heap中的String对象hs，指向char[]={world}，因为world已经在全局字符串池中存在引用，所以不再创建。newStr指向hs
@@ -150,7 +245,7 @@ public class StringPoolTest {
 
         /**
          *        栈                     堆                    全局字符串池
-         *     intern                   hs                        ls                    char[]={world}
+         *     intern         hs（创建了但是没被引用所以会被GC）      ls                    char[]={world}
          *
          *
          *  0 new #3 <java/lang/String>
@@ -163,34 +258,34 @@ public class StringPoolTest {
          *
          * 从字节码层面看，先检查全局字符串池中的world（无则创建），然后在堆中创建对象，最后再执行intern，返回的引用指向intern()所在常量池中的world引用ls
          **/
-        //
         String intern = new String("world").intern();
-
-        System.out.println((literalStr == literalStrIntern) + " >>> literalStr == literalStrIntern\n");
-        System.out.println((newStr == newStrIntern) + " >>> newStr == newStrIntern\n");
-        System.out.println((literalStrIntern == newStrIntern) + " >>> literalStrIntern == newStrIntern\n");
-
-        System.out.println((literalStr == intern) + " >>> literalStr == intern\n");
-        System.out.println((newStr == intern) + " >>> newStr == intern\n");
-        System.out.println((literalStrIntern == intern) + " >>> literalStrIntern == intern\n");
-        System.out.println((newStrIntern == intern) + " >>> newStrIntern == intern\n");
 
         ObjectAddressUtil.printAddressByJDK("literalStr", literalStr);
         ObjectAddressUtil.printAddressByJDK("literalStrIntern", literalStrIntern);
         ObjectAddressUtil.printAddressByJDK("newStr", newStr);
         ObjectAddressUtil.printAddressByJDK("newStrIntern", newStrIntern);
         ObjectAddressUtil.printAddressByJDK("intern", intern);
+
     }
 
+    /**
+     * 字符串的拼接只有编译期确定的，或者是类解析能确定的，才会进入全局字符串池，下面的1，3可以，等效于String ab = "ab"
+     *      1. 直接字面量拼接："a" + "b"
+     *      2. 包含引用的拼接："a" + new String("b") / "a" + String b = "b"
+     *      3. final修饰的拼接："a" + final b = "b"
+     *      4. 方法调用拼接："a" + getB() = "b"
+     *
+     **/
     public static void testStringLink() {
 
-        // 生成两个对象，全局字符串池中的String对象ls，指向char[]={1}；堆中的String对象hs，指向char[]={11}（此时全局字符串池中没有11）
+        // 生成两个对象，全局字符串池中的String对象ls，指向char[]={1}；堆中的String对象hs，指向char[]={11}，此时全局字符串池中没有11的引用
+        // 题外话，2个匿名类因为没有引用，所以会被GC
         String s1 = new String("1") + new String("1");
-        // TODO 将s1指向的hs所对应的11放入全局字符串池，因为池中不存在11，需要生成，但是此时堆中已经存在11，所以可以直接拿来用，也就是hs
+        // TODO 将s1指向的hs所对应的11放入全局字符串池，因为池中不存在，本来是需要生成的，但是堆中已经存在11了，也就是hs，可以直接拿来用（即hs被赋予了驻留字符串的身份，nb了）
         String si = s1.intern();
         // 显示声明11，会去检查全局字符串池，发现已经存在11（hs）
         String s2 = "11";
-        // s1是堆中的，s2是全局字符串池的，但是指向堆中的引用
+        // s1指向hs，s2指向ls，ls指向hs
         System.out.println(s1 == s2);
 
         ObjectAddressUtil.printAddressByJDK("s1", s1);
@@ -198,62 +293,87 @@ public class StringPoolTest {
         ObjectAddressUtil.printAddressByJDK("si", si);
 
 
-        // 创建2个对象：全局字符串池中的String对象ls=2，指向char[]={2}和heap中的String对象hs=22，指向char[]={22}。s3指向hs，此时全局字符串池中没有22的引用
+        // 生成两个对象，全局字符串池中的String对象ls，指向char[]={2}；heap中的String对象hs，指向char[]={22}，此时全局字符串池中没有22的引用
         String s3 = new String("2") + new String("2");
-        // 显示创建22：全局字符串池中String对象ls2=22，指向char[]={22}。s4指向ls2
+        // 显示创建22：全局字符串池中String对象ls2，指向char[]={22}，s4指向ls2
         String s4 = "22";
-        // 将s3（hs）对应的22放入全局字符串池，但是池中已经存在了22（ls2指向），所以此句无效
+        // 将s3指向的hs对应的22放入全局字符串池，但是池中已经存在了22引用（驻留字符串ls2），所以此句无效
         String si2 = s3.intern();
-        // s3是堆中的，s4是全局字符串池中的
+        // s3指向hs，s4指向ls
         System.out.println(s3 == s4);
 
         ObjectAddressUtil.printAddressByJDK("s3", s3);
         ObjectAddressUtil.printAddressByJDK("s4", s4);
         ObjectAddressUtil.printAddressByJDK("si2", si2);
+
+
+        // 全局字符串池要保存的是已确定的字面量值
+        String s5 = "33";
+        String s6 = "44";
+        String s7 = "3344";
+        // 纯字面量和字面量的拼接，会把拼接结果作为常量保存到全局字符串池
+        String s8 = "33" + "44";
+        // 非字面量拼接，整个拼接操作会被编译成StringBuilder.append，这种情况编译器是无法确定其值的，只有在运行期才可以。
+        String s9 = s5 + s6;
+        final String s10 = "33";
+        // final修饰的变量，在编译期被解析为常量（即s10被替换为33）
+        String s11 = s10 + "44";
+        ObjectAddressUtil.printAddressByJDK("s5", s5);
+        ObjectAddressUtil.printAddressByJDK("s6", s6);
+        ObjectAddressUtil.printAddressByJDK("s7", s7);
+        ObjectAddressUtil.printAddressByJDK("s8", s8);
+        ObjectAddressUtil.printAddressByJDK("s9", s9);
+        ObjectAddressUtil.printAddressByJDK("s10", s10);
+        ObjectAddressUtil.printAddressByJDK("s11", s11);
+
+    }
+
+    /**
+     * 测试第3点常量池的小结：全局字符串池只存有引用，具体实例可以来自解析时的字面量，动态生成的String所在的堆中的实例，
+     *
+     **/
+    public static void testStringPool() {
+        // 123实例在堆中的一个地方，引用在全局字符串池中持有，new String实例持有全局字符串池中引用的地址
+        String s2 = new String("123");
+        // 123 在类的堆区域中
+        String s3 = String.valueOf(123);
+        ObjectAddressUtil.printAddressByJDK("s2", s2);
+        ObjectAddressUtil.printAddressByJDK("s3", s3);
+
+        // 456实例在类的堆区域中
+        String s4 = String.valueOf(456);
+        // 456被加入到运行时常量池中，顺带在全局字符串持有引用 TODO 原来在堆中的实例，现在被转移到方法区中了？还是说方法区也有一份？
+        String s5 = s4.intern();
+        // 从打印结果看，s4和s5地址一样，说明intern()返回的是堆中的地址
+        ObjectAddressUtil.printAddressByJDK("s4", s4);
+        ObjectAddressUtil.printAddressByJDK("s5", s5);
+
+
     }
 
 
     public static void main(String[] args) {
 
-        /**
-         * StringA:
-         * Current address: 3592040088
-         * java.lang.String@7fbe847cd object externals:
-         *           ADDRESS       SIZE TYPE             PATH                           VALUE
-         *          d61a2e98         24 java.lang.String                                (object)
-         *          d61a2eb0         24 [C               .value                         [A, B, C]
-         *
-         * StringB:
-         * Current address: 3592040088
-         * java.lang.String@7fbe847cd object externals:
-         *           ADDRESS       SIZE TYPE             PATH                           VALUE
-         *          d61a2e98         24 java.lang.String                                (object)
-         *          d61a2eb0         24 [C               .value                         [A, B, C]
-         *
-         *
-         * 从上面分析，字符串实例，即char[]用的同一份，
-         **/
-//        StringA.getString();
-//        StringB.getString();
-//
 //        testLiteralAndNew();
 //
-        testIntern();
+//        testIntern();
 
 //        testStringLink();
+
+//        testStringAddress();
+
+//        testStringPool();
+
+
+        String s1 = new String("11");
+        String si = s1.intern();
+        String s2 = "11";
+        System.out.println(s1 == s2);
+
+        ObjectAddressUtil.printAddressByJDK("s1", s1);
+        ObjectAddressUtil.printAddressByJDK("s2", s2);
+        ObjectAddressUtil.printAddressByJDK("si", si);
     }
 
-    /**
-     * jdk 1.8
-     *
-     * 字面量形式，String s = "abc"; 常量char[]={a,b,c}会进入方法区，全局字符串池中的String对象ls会持有这个char[]的地址，然后s指向ls的地址
-     *
-     * 如果是new String("123"); 实际字面量char[]={1,2,3}也是在堆中的一个地方，类加载期间全局字符串池中有一个String对象指向char[]，运行期执行new，在堆中新生成String对象，
-     * 同样指向char[]，所以创建了2个对象
-     *
-     *
-     *
-     *
-     **/
 
 }
