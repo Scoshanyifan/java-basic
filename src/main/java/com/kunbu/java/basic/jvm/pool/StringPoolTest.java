@@ -1,6 +1,4 @@
-package com.kunbu.java.basic.base.string;
-
-import com.kunbu.java.basic.base.ObjectAddressUtil;
+package com.kunbu.java.basic.jvm.pool;
 
 /**
  * 字符串（池）被大家经常误解和搞不清楚的原因：

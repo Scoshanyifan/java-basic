@@ -1,6 +1,4 @@
-package com.kunbu.java.basic.jvm;
-
-import com.kunbu.java.basic.jvm.util.UnsafeUtil;
+package com.kunbu.java.basic.jvm.ObjectSize;
 
 /**
  * byte和boolean是1字节
@@ -49,7 +47,7 @@ public class ObjectSize {
     public static void main(String[] args) {
         /**
          * 测试一
-         *  这里CPU一次直接操作数据的单位是8字节，一个cache line，而long也是8字节，对象头的偏移是12，如果直接跟在后面就
+         *  这里CPU一次直接操作数据的单位是8字节，而long也是8字节，对象头的偏移是12，如果直接跟在后面就
          *  需要两次读取该数据，所以JVM选择从16偏移开始
          *
          * l---offSet:16

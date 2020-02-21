@@ -1,4 +1,4 @@
-package com.kunbu.java.basic.jvm.util;
+package com.kunbu.java.basic.jvm.ObjectSize;
 
 import java.lang.instrument.Instrumentation;
 
