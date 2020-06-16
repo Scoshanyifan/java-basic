@@ -19,7 +19,7 @@
 
         <commons-io.version>2.6</commons-io.version>
         <commons-lang3.version>3.7</commons-lang3.version>
-        <guava.version>24.1-jre</guava.version>
+        <guava.version>24.1.1-jre</guava.version>
         <com.alibaba.version>1.2.49</com.alibaba.version>
         <org.apache.mail.version>1.5</org.apache.mail.version>
         <commons-collections4.version>4.1</commons-collections4.version>
